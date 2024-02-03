@@ -1,0 +1,24 @@
+Ctrl-s
+- Stops data being transmitted to the terminal until you press ctrl-q
+
+( originates from when you might pause transmission to printer )
+
+
+Disabling ctrl-v 
+ - removing the ctrl-v field
+
+
+Fixing ctrl-m
+ - Terminal translates any carriage returns (13, '/r') into 10
+ CTRL-j already produces (10), so does the ENTER key.
+ Terminal is translating carriage return (/r) into newline (10, /n) 
+
+ -----------------------
+ Turning off Output processing
+- The terminal is also translating characters in the output processing. ( e.g. - \n become \r\n)
+
+
+
+------------------------------
+Miscellaneous flags
+

@@ -1,0 +1,7 @@
+When you run ./kilo, your terminal gets hooked up to the standard input, and so your keyboard input gets read into the c variable. However, by default your terminal starts in canonical mode, also called cooked mode. In this mode, keyboard input is only sent to your program when the user presses Enter
+-- ok for most situations, but doesn't work well for more complex UI, like text editors.
+
+RAW MODE 
+------------
+Processes keypress as it comes in 
+> To achieve this, you need to turn off a lot of flags in the terminal

@@ -1,0 +1,9 @@
+Raw mode - 
+allowing us to process each keypress as it comes in
+
+
+Turning off echoing
+tcgetattr() to read current attributes into a struct.
+Need to manucally change the value in the struct.
+
+Note - after program exits, type 'reset' and hit enter to reset terminal back to normal

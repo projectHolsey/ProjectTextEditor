@@ -1,0 +1,18 @@
+First line says that we want to build 'kilo' and 'Kilo.c' is required to build it.
+
+Second line specifies the command to run.
+( ensure second line is tabbed, now whitespace )
+
+Explaining arguments
+
+gcc :- Variable that makes 'make' use 'gcc' by default
+
+-Wall :- All warning - get compiler to warn you when code may be wrong
+
+-Wextra :- turn on even more warnings 
+
+-pendantic :- turn of even more warnings
+
+-std=c99 :- Specifies exact version of C standard we're uring
+( can declare vars anywhere within a function, instead of just at top of function )
+
