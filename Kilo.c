@@ -3,6 +3,8 @@
 #include <ctype.h> // Control characters
 #include <stdio.h> // standard IO module for printf
 #include <errno.h> 
+#include <stdio.h>
+#include <string.h>
 #include <sys/ioctl.h> // Get size of terminal window
 #include <stdlib.h> // standard library - type conversion, mem alloc...
 #include <termios.h> // importing variables for terminal
@@ -149,7 +151,7 @@ int getWindowSize(int *rows, int *cols) {
     struct winsize ws;
 
     // on success, system call will place numbers of cols and rows in winsize struct
-    if (1 || ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    if (ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
         
         // C -> move the cursor right 999 spaces
         // B -> move the cursor down 999 spaces
@@ -169,18 +171,66 @@ int getWindowSize(int *rows, int *cols) {
 }
 
 
+/*** append buffer ***/
+// Instead of doing x small writes, we are making buffer to do 1 big write
+
+// creating our own dynamic string type
+struct abuf {
+    char *b;
+    int len;
+};
+
+// acts as constructor for the abuf type
+#define ABUF_INIT {NULL, 0}
+
+void abAppend(struct abuf *ab, const char *s, int len) {
+    // realloc comes from <stdlib.h>
+    // makes sure we have enough memory to hold new string
+    char *new = realloc(ab->b, ab->len + len);
+    // gives us memory = cur_mem_size + new_thing_to_append
+
+    // return if the size is null
+    if (new == NULL) {
+        return;
+    }
+
+    // memcpy comes from <string.h>
+    // copy string s after the end of current data
+    memcpy(&new[ab->len], s, len);
+    ab->b = new;
+    ab->len = len;
+
+}
+
+// deconstructor that deallocates dynamic memory used by an abuf
+void abFree(struct abuf *ab){
+    // comes from <stdlib.h>
+    free(ab->b);
+}
+
+
 /*** output ***/
-void editorDrawRows() {
+void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenrows; y++) {
-        // Write ~ on the left hand side of the screen
-        write(STDOUT_FILENO, "~\r\n", 3);
+        // making sure we write ~ on every row
+        // write(STDOUT_FILENO, "~", 1);
+        abAppend(ab, "~", 1);
+
+        if (y < E.screenrows - 1) {
+            // write(STDOUT_FILENO, "\r\n", 3);
+            abAppend(ab, "\r\n", 2);
+        }
+
     }
 }
 
 // Clears the terminal
 void editorRefreshScreen() {
    
+    // init the new dynamic memo string buffer
+    struct abuf ab = ABUF_INIT;
+
     // 4 = write 4 bytes
     // \x1b[2j] -> ESCAPE SEQUENCE
 
@@ -190,17 +240,25 @@ void editorRefreshScreen() {
     // J -> clear the screen
     // 2 -> clear the entire screen
     // <esc>[1J would clear screen up to where cursor is
-    write(STDOUT_FILENO, "\x1b[2J", 4);
+    // write(STDOUT_FILENO, "\x1b[2J", 4);
+    abAppend(&ab, "\x1b[2J", 4);
 
     // Reposition cursor to top left corner after refresh
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    // write(STDOUT_FILENO, "\x1b[H", 3);
+    abAppend(&ab, "\x1b[H", 3);
 
     
     // draw the ~ symbol at beggining of row
-    editorDrawRows();
+    editorDrawRows(&ab);
 
-      // Reposition cursor to top left corner after refresh
-    write(STDOUT_FILENO, "\x1b[H", 3);
+
+    abAppend(&ab, "\x1b[H", 3);
+
+    // write the buffer to the screen
+    write(STDOUT_FILENO, ab.b, ab.len);
+
+    // free the buffer after the write
+    abFree(&ab);
 
 }
 
