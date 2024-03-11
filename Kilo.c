@@ -50,6 +50,7 @@ typedef struct erow {
 struct editorConfig {
   // cursor position
   int cx, cy;
+  int rowoff; // vertical scrolling
   int screenrows;
   int screencols;
   int numrows;
@@ -366,12 +367,26 @@ void abFree(struct abuf *ab){
 
 
 /*** output ***/
+void editorScroll() {
+
+  // check if cursor moved outside of visible window
+  // adjust E.rowoff so cursor is just inside visible window 
+  if (E.cy < E.rowoff) {
+    E.rowoff = E.cy;
+  } 
+  if (E.cy >= E.rowoff + E.screenrows) {
+    E.rowoff = E.cy - E.screenrows + 1;
+  }
+}
+
+
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
+    int filerow = y + E.rowoff; // displaying correct line of the file if reading from file
 
     // check if the row we're drawing is part of text buffer or row that comes before / after
-    if (y >= E.numrows) {
+    if (filerow >= E.numrows) {
 
       // don't write the welcome message if we have read in a file
       if (E.numrows == 0 && y == E.screenrows / 3) {
@@ -405,11 +420,12 @@ void editorDrawRows(struct abuf *ab) {
       }
     } else {
 
-      int len = E.row[y].size;
+      // displaying correct row at each y position of text editor
+      int len = E.row[filerow].size;
       if (len > E.screencols) {
         len = E.screencols;
       }
-      abAppend(ab, E.row[y].chars, len);
+      abAppend(ab, E.row[filerow].chars, len);
     }
 
 
@@ -428,6 +444,7 @@ void editorDrawRows(struct abuf *ab) {
 
 // Clears the terminal
 void editorRefreshScreen() {
+  editorScroll();
 
   // init the new dynamic memo string buffer
   struct abuf ab = ABUF_INIT;
@@ -493,7 +510,8 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_DOWN:
-      if (E.cy != E.screenrows - 1) {
+      // allowing cursor to move past bottom of screen, but not past EoF
+      if (E.cy < E.numrows) {
         E.cy++;
       }
       break;
@@ -550,6 +568,7 @@ void editorProcessKeypress() {
 void initEditor() {
   E.cy = 0;
   E.cx = 0;
+  E.rowoff = 0; // scroll to top by default
   E.numrows = 0; // will only display a single line of text
   E.row = NULL;
 
