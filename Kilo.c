@@ -378,6 +378,13 @@ void editorScroll() {
   if (E.cy >= E.rowoff + E.screenrows) {
     E.rowoff = E.cy - E.screenrows + 1;
   }
+
+  if (E.cx < E.coloff) {
+    E.coloff = E.cx;
+  }
+  if (E.cx >= E.coloff + E.screencols) {
+    E.coloff = E.cx - E.screencols + 1;
+  }
 }
 
 
@@ -422,11 +429,16 @@ void editorDrawRows(struct abuf *ab) {
     } else {
 
       // displaying correct row at each y position of text editor
-      int len = E.row[filerow].size;
+      // adjusting for coloff(set) to keep x position correct too
+      int len = E.row[filerow].size - E.coloff;
+      
+      if (len < 0) {
+        len = 0;
+      }
       if (len > E.screencols) {
         len = E.screencols;
       }
-      abAppend(ab, E.row[filerow].chars, len);
+      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     }
 
 
@@ -501,9 +513,8 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_RIGHT:
-      if (E.cx != E.screencols - 1) {
-        E.cx++;
-      }
+      // changed to allow user to scrll to the right of screen
+      E.cx++;
       break;
     case ARROW_UP:
       if (E.cy != 0) {
@@ -570,6 +581,7 @@ void initEditor() {
   E.cy = 0;
   E.cx = 0;
   E.rowoff = 0; // scroll to top by default
+  E.coloff = 0;
   E.numrows = 0; // will only display a single line of text
   E.row = NULL;
 
