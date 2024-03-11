@@ -1,10 +1,16 @@
 // /*** includes ***/
 
+// feature test macros - being imported from header files
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <ctype.h> // Control characters
 #include <stdio.h> // standard IO module for printf
 #include <errno.h> 
 #include <string.h>
 #include <sys/ioctl.h> // Get size of terminal window
+#include <sys/types.h> // malloc & ssize_t come from this import
 #include <stdlib.h> // standard library - type conversion, mem alloc...
 #include <termios.h> // importing variables for terminal
 #include <unistd.h>  // importing standard io module for input keys
@@ -33,12 +39,21 @@ enum editorKey {
 
 /*** data ***/
 
+// data type for storing row in text editor
+typedef struct erow {
+  int size;
+  char *chars;
+} erow;
+
+
 // global struct to contain editor's state
 struct editorConfig {
   // cursor position
   int cx, cy;
   int screenrows;
   int screencols;
+  int numrows;
+  erow *row; // storing multiple lines
   struct termios orig_termios; // Saving original termios state
 };
 
@@ -139,7 +154,7 @@ int editorReadKey() {
 
     // replacing up|down|left|right arrows with WASD
     if (seq[0] == '[') {
-      if (seq[1] >= '0' && seq[1] <= 9) {
+      if (seq[1] >= '0' && seq[1] <= '9') {
 
 
         if (read(STDIN_FILENO, &seq[2], 1) != 1){
@@ -266,6 +281,50 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+/** file I/O ***/
+void editorAppendRow(char *s, size_t len){
+
+  // allocating space for new erow
+  E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+
+  // copy given string to end of eRow
+  int at = E.numrows;
+  E.row[at].size = len;
+  E.row[at].chars = malloc(len + 1);
+  // Copy the line to chars in row
+  memcpy(E.row[at].chars, s, len);
+
+  // each erow represents 1 line of text, so no need for the new line
+  E.row[at].chars[len] = '\0';
+  E.numrows++;
+}
+
+
+/*** file i/o ***/
+
+void editorOpen(char *filename) {
+  FILE *fp = fopen(filename, "r");
+  
+  if (!fp) {
+    die("fopen");
+  }
+
+  char *line = NULL;
+  size_t linecap = 0;
+  ssize_t linelen;
+  // read lines from file
+  while ((linelen = getline(&line, &linecap, fp)) != -1) {
+    // if linelen == -1, it's at the end of the file
+    while (linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) {
+      linelen--;
+   
+    }
+    editorAppendRow(line, linelen);
+  }
+  free(line);
+  fclose(fp);
+}
+
 
 /*** append buffer ***/
 // Instead of doing x small writes, we are making buffer to do 1 big write
@@ -311,35 +370,46 @@ void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
 
+    // check if the row we're drawing is part of text buffer or row that comes before / after
+    if (y >= E.numrows) {
 
-    if (y == E.screenrows / 3) {
-      char welcome[80];
-      // snprinft - comes from <stdio.h>
-      // interpolate KILO_VERSION string into welcome msg
-      int welcomelen = snprintf(welcome, sizeof(welcome),
-                                "Kilo editor -- version %s", KILO_VERSION);
+      // don't write the welcome message if we have read in a file
+      if (E.numrows == 0 && y == E.screenrows / 3) {
+        char welcome[80];
+        // snprinft - comes from <stdio.h>
+        // interpolate KILO_VERSION string into welcome msg
+        int welcomelen = snprintf(welcome, sizeof(welcome),
+                                  "Kilo editor -- version %s", KILO_VERSION);
 
-      // truncate string length if terminal is too small
-      if (welcomelen > E.screencols) {
-        welcomelen = E.screencols;
-      }
+        // truncate string length if terminal is too small
+        if (welcomelen > E.screencols) {
+          welcomelen = E.screencols;
+        }
 
-      // creating padding around the welcome string in the terminal
-      int padding = (E.screencols - welcomelen) / 2;
+        // creating padding around the welcome string in the terminal
+        int padding = (E.screencols - welcomelen) / 2;
 
-      if (padding) {
+        if (padding) {
+          abAppend(ab, "~", 1);
+          padding--;
+        }
+        while (padding--) {
+          abAppend(ab, " ", 1);
+        }
+        abAppend(ab, welcome, welcomelen);
+      } else {
+        // making sure we write ~ on every row
+        // write(STDOUT_FILENO, "~", 1);
         abAppend(ab, "~", 1);
-        padding--;
-      }
-      while (padding--) {
-        abAppend(ab, " ", 1);
-      }
-      abAppend(ab, welcome, welcomelen);
-    } else {
-      // making sure we write ~ on every row
-      // write(STDOUT_FILENO, "~", 1);
-      abAppend(ab, "~", 1);
 
+      }
+    } else {
+
+      int len = E.row[y].size;
+      if (len > E.screencols) {
+        len = E.screencols;
+      }
+      abAppend(ab, E.row[y].chars, len);
     }
 
 
@@ -406,7 +476,7 @@ void editorRefreshScreen() {
 /*** input ***/
 
 void editorMoveCursor(int key) {
-  switch(key) {
+  switch (key) {
     case ARROW_LEFT:
       if (E.cx != 0) {
         E.cx--;
@@ -423,7 +493,7 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_DOWN:
-      if (E.cy != E.screenrows - 1){ 
+      if (E.cy != E.screenrows - 1) {
         E.cy++;
       }
       break;
@@ -434,7 +504,7 @@ void editorMoveCursor(int key) {
 
 // wait for keypress, handles it later
 void editorProcessKeypress() {
-  char c = editorReadKey();
+  int c = editorReadKey();
 
   switch(c) {
     case CTRL_KEY('q'):
@@ -480,6 +550,8 @@ void editorProcessKeypress() {
 void initEditor() {
   E.cy = 0;
   E.cx = 0;
+  E.numrows = 0; // will only display a single line of text
+  E.row = NULL;
 
   // Check if we could get window size on init
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) {
@@ -492,9 +564,15 @@ void initEditor() {
 
 
 /*** init ***/
-int main() {
+int main(int argc, char *argv[]) {
   enableRawMode();
   initEditor();
+  // if there's a file, open the file
+  if (argc >= 2) { 
+    
+    editorOpen(argv[1]);
+  }
+  
 
   while (1) {
     editorRefreshScreen();
