@@ -51,6 +51,7 @@ struct editorConfig {
   // cursor position
   int cx, cy;
   int rowoff; // vertical scrolling
+  int coloff; // horizontal scrolling
   int screenrows;
   int screencols;
   int numrows;
@@ -475,7 +476,7 @@ void editorRefreshScreen() {
   // specifying exact position for the cursor to move to
   // 
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
   abAppend(&ab, buf, strlen(buf));
 
 
