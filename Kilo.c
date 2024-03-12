@@ -8,6 +8,7 @@
 #include <ctype.h> // Control characters
 #include <stdio.h> // standard IO module for printf
 #include <errno.h> 
+#include <stdarg.h>
 #include <string.h>
 #include <sys/ioctl.h> // Get size of terminal window
 #include <sys/types.h> // malloc & ssize_t come from this import
@@ -552,7 +553,26 @@ void editorDrawStatusBar(struct abuf *ab) {
   }
 
   abAppend(ab, "\x1b[m", 3); // escape sequence - switches back to normal colours
+  abAppend(ab, "\r\n", 2); // making room for status bar
 }
+
+
+void editorDrawMessageBar(struct abuf *ab) {
+  abAppend(ab, "\x1b[K", 3);
+
+  int msglen = strlen(E.statusmsg); // getting length of status msg string 
+  
+  // Ensuring we don't go over assigned width
+  if (msglen > E.screencols) {
+    msglen = E.screencols;
+  }
+  // if there's a status msg and passed time is < 5 seconds
+  // draw the new status message to the screen
+  if (msglen && time(NULL) - E.statusmsg_time < 5) {
+    abAppend(ab, E.statusmsg, msglen);
+  }
+}
+
 
 
 // Clears the terminal
@@ -585,6 +605,7 @@ void editorRefreshScreen() {
   // draw the ~ symbol at beggining of row
   editorDrawRows(&ab);
   editorDrawStatusBar(&ab);
+  editorDrawMessageBar(&ab);
 
   // specifying exact position for the cursor to move to
   // 
@@ -602,6 +623,29 @@ void editorRefreshScreen() {
   // free the buffer after the write
   abFree(&ab);
 
+}
+
+/*
+ * the ... makes this function a variadic function, 
+ * meaning it can take any number of arguments. 
+*/
+void editorSetStatusMessage(const char *fmt, ...) {
+  /*
+  * Calls va_Start and va_end on a value of type va_list
+  * last arg before ... must be passed to va_start.
+  * Between start and end, you would call va_arg and pass it type of next arg
+  * 
+  */
+
+
+  // va_list | va_start | va_end come from stdarg.
+  va_list ap;
+  va_start(ap, fmt);
+  // vsnprintf comes from stdio.h
+  // makes out own printf funct. Store result in E.statusmgr
+  vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+  va_end(ap);
+  E.statusmsg_time = time(NULL); // getting current time
 }
 
 /*** input ***/
@@ -731,8 +775,8 @@ void initEditor() {
     die("getWindowSize");
   }
 
-  E.screenrows -= 1; // Decremented so editor doesnt draw row at bottom of screen
-  // Allows us t make teh status bar
+  E.screenrows -= 2; // Decremented so editor doesnt draw rows at bottom of screen
+  // Allows us to make the status bar and message bars
 }
 
 
@@ -749,6 +793,7 @@ int main(int argc, char *argv[]) {
     editorOpen(argv[1]);
   }
   
+  editorSetStatusMessage("HELP: Ctrl-Q = quit");
 
   while (1) {
     editorRefreshScreen();
