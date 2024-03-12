@@ -20,6 +20,7 @@
 
 // const string to show version of the program
 #define KILO_VERSION "0.0.1"
+#define KILO_TAB_STOP 8
 
 // defining a constant / function
 #define CTRL_KEY(k) ((k) & 0x1f)
@@ -42,7 +43,9 @@ enum editorKey {
 // data type for storing row in text editor
 typedef struct erow {
   int size;
+  int rsize;
   char *chars;
+  char *render; // rendering tabs and other special chars
 } erow;
 
 
@@ -50,6 +53,7 @@ typedef struct erow {
 struct editorConfig {
   // cursor position
   int cx, cy;
+  int rx; // horizontal co-ordinate for tabs e.t.c
   int rowoff; // vertical scrolling
   int coloff; // horizontal scrolling
   int screenrows;
@@ -284,6 +288,57 @@ int getWindowSize(int *rows, int *cols) {
 }
 
 /** file I/O ***/
+
+int editorRowCxToRx(erow *row, int cx) {
+  int rx = 0;
+  int j;
+  for (j = 0; j < cx; j++) {
+    // if the current char we're looping over is tab
+    if (row->chars[j] == '\t') {
+      // Add tab 'spaces' to move cursor in row
+      rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+    }
+    rx++
+  }
+  return rx;
+}
+
+void editorUpdateRow(erow *row) {
+  int tabs = 0;
+  int j;
+  for (j = 0; j < row->size; j++) {
+    // Check if tabs char is present in row to be rendered
+    if (row->chars[j] == '\t') {
+      tabs++;
+    }
+  }
+
+  // free the memory currently in use
+  free(row->render);
+  // Allocate new memory as row size +1 + tabs*7
+  row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+
+  int idx = 0;
+  // Loop through all chars in row
+  for (j = 0; j < row->size; j++) {
+    // if current char is tab
+    if (row->chars[j] == '\t') {
+      // add in spaces for count of 8 (or.. sometimes it's less dependent on how far away end of tab is)
+      row->render[idx++] = ' ';
+      while (idx % KILO_TAB_STOP != 0) {
+        row->render[idx++] = ' ';
+      }
+    } else{ 
+      // copy them to render array
+      row->render[idx++] = row->chars[j];
+    }
+  }
+  row->render[idx] = '\0'; // append end of line char
+  row->rsize = idx; // size of row
+
+}
+
+
 void editorAppendRow(char *s, size_t len){
 
   // allocating space for new erow
@@ -295,9 +350,13 @@ void editorAppendRow(char *s, size_t len){
   E.row[at].chars = malloc(len + 1);
   // Copy the line to chars in row
   memcpy(E.row[at].chars, s, len);
-
   // each erow represents 1 line of text, so no need for the new line
   E.row[at].chars[len] = '\0';
+
+  E.row[at].rsize = 0;
+  E.row[at].render = NULL;
+  editorUpdateRow(&E.row[at]); // pass reference to current row
+
   E.numrows++;
 }
 
@@ -369,6 +428,10 @@ void abFree(struct abuf *ab){
 
 /*** output ***/
 void editorScroll() {
+  E.rx = 0; // change cursor to be render item not chars
+  if (E.cy < E.numrows) {
+    E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+  }
 
   // check if cursor moved outside of visible window
   // adjust E.rowoff so cursor is just inside visible window 
@@ -379,11 +442,11 @@ void editorScroll() {
     E.rowoff = E.cy - E.screenrows + 1;
   }
 
-  if (E.cx < E.coloff) {
-    E.coloff = E.cx;
+  if (E.rx < E.coloff) {
+    E.coloff = E.rx;
   }
-  if (E.cx >= E.coloff + E.screencols) {
-    E.coloff = E.cx - E.screencols + 1;
+  if (E.rx >= E.coloff + E.screencols) {
+    E.coloff = E.rx - E.screencols + 1;
   }
 }
 
@@ -430,7 +493,7 @@ void editorDrawRows(struct abuf *ab) {
 
       // displaying correct row at each y position of text editor
       // adjusting for coloff(set) to keep x position correct too
-      int len = E.row[filerow].size - E.coloff;
+      int len = E.row[filerow].rsize - E.coloff;
       
       if (len < 0) {
         len = 0;
@@ -438,7 +501,7 @@ void editorDrawRows(struct abuf *ab) {
       if (len > E.screencols) {
         len = E.screencols;
       }
-      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+      abAppend(ab, &E.row[filerow].render[E.coloff], len);
     }
 
 
@@ -488,7 +551,7 @@ void editorRefreshScreen() {
   // specifying exact position for the cursor to move to
   // 
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
   abAppend(&ab, buf, strlen(buf));
 
 
@@ -601,6 +664,7 @@ void editorProcessKeypress() {
 void initEditor() {
   E.cy = 0;
   E.cx = 0;
+  E.rx = 0;
   E.rowoff = 0; // scroll to top by default
   E.coloff = 0;
   E.numrows = 0; // will only display a single line of text
