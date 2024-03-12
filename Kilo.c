@@ -13,6 +13,7 @@
 #include <sys/types.h> // malloc & ssize_t come from this import
 #include <stdlib.h> // standard library - type conversion, mem alloc...
 #include <termios.h> // importing variables for terminal
+#include <time.h> 
 #include <unistd.h>  // importing standard io module for input keys
 
 
@@ -60,6 +61,10 @@ struct editorConfig {
   int screencols;
   int numrows;
   erow *row; // storing multiple lines
+  char *filename; // adding filename for status bar
+  char statusmsg[80]; // creating status message line under status bar
+  time_t statusmsg_time;  // current time of the status msg
+
   struct termios orig_termios; // Saving original termios state
 };
 
@@ -298,7 +303,7 @@ int editorRowCxToRx(erow *row, int cx) {
       // Add tab 'spaces' to move cursor in row
       rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
     }
-    rx++
+    rx++;
   }
   return rx;
 }
@@ -364,6 +369,10 @@ void editorAppendRow(char *s, size_t len){
 /*** file i/o ***/
 
 void editorOpen(char *filename) {
+  free(E.filename);
+  E.filename = strdup(filename); // strdup comes from string.h
+  // makes copy of given string, allocating required memory and assuming you will free the memory
+  
   FILE *fp = fopen(filename, "r");
   
   if (!fp) {
@@ -451,6 +460,7 @@ void editorScroll() {
 }
 
 
+
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
@@ -507,15 +517,42 @@ void editorDrawRows(struct abuf *ab) {
 
     abAppend(ab, "\x1b[K", 3); // clear the line
 
-    if (y < E.screenrows - 1) {
-      // write(STDOUT_FILENO, "\r\n", 3);
-      abAppend(ab, "\r\n", 2);
-    }
+    abAppend(ab, "\r\n", 2);
 
   }
 }
 
+void editorDrawStatusBar(struct abuf *ab) {
+  // explaining m commands - https://vt100.net/docs/vt100-ug/chapter3.html#SGR
+  abAppend(ab, "\x1b[7m", 4); // escape sequence - switches to inverted colours
+  char status[80], rstatus[80];
+  
+  // getting length of row to write
+  // Copying filename / [no name] to buffer
+  int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.numrows);
+  
+  // Render line also includes the current line number at right edge of screen
+  int rlen = snprintf(rstatus, sizeof(rstatus),  "%d/%d", E.cy + 1, E.numrows);
 
+  // Cut string short if it's too big..
+  if (len > E.screencols) {
+    len = E.screencols;
+  }
+  // write to the screen 
+  abAppend(ab, status, len);
+  
+  while (len < E.screencols) {
+    if (E.screencols - len == rlen) {
+      abAppend(ab, rstatus, rlen);
+      break;
+    } else {
+      abAppend(ab, " ", 1);
+      len++;
+    }
+  }
+
+  abAppend(ab, "\x1b[m", 3); // escape sequence - switches back to normal colours
+}
 
 
 // Clears the terminal
@@ -547,6 +584,7 @@ void editorRefreshScreen() {
 
   // draw the ~ symbol at beggining of row
   editorDrawRows(&ab);
+  editorDrawStatusBar(&ab);
 
   // specifying exact position for the cursor to move to
   // 
@@ -683,11 +721,18 @@ void initEditor() {
   E.coloff = 0;
   E.numrows = 0; // will only display a single line of text
   E.row = NULL;
+  E.filename = NULL; // initalised to NULL - will stay if there's no file read in
+
+  E.statusmsg[0] = '\0';
+  E.statusmsg_time = 0;
 
   // Check if we could get window size on init
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) {
     die("getWindowSize");
   }
+
+  E.screenrows -= 1; // Decremented so editor doesnt draw row at bottom of screen
+  // Allows us t make teh status bar
 }
 
 
