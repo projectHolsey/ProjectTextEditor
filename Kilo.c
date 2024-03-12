@@ -632,9 +632,12 @@ void editorProcessKeypress() {
       E.cx = 0;
       break;
     
-    // making end key jump to end of line
+      // making end key jump to end of line
     case END_KEY:
-      E.cx = E.screencols - 1;
+      if (E.cy < E.numrows) {
+        E.cx = E.row[E.cy].size;
+      }
+      
       break;
 
     // Move cursor to top or bottom of page
