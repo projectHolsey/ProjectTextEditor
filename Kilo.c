@@ -641,6 +641,17 @@ void editorProcessKeypress() {
     case PAGE_DOWN:
     case PAGE_UP:
       {
+
+        // Adding scroll capabilties for page up / down  
+        if (c == PAGE_UP){
+          E.cy = E.rowoff;
+        } else if (c == PAGE_DOWN) {
+          E.cy = E.rowoff + E.screenrows - 1;
+          if (E.cy > E.numrows) {
+            E.cy = E.numrows;
+          }
+        }
+
         // can only declare vars inside { }
         int times = E.screenrows;
         while (times--) {
