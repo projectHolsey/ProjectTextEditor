@@ -366,6 +366,38 @@ void editorAppendRow(char *s, size_t len){
   E.numrows++;
 }
 
+/**
+ * Function inserts a single char into an erow
+*/
+void editorRowInsertChar(erow *row, int at, int c) {
+  if (at < 0 || at > row->size) {
+    at = row->size;
+  }
+
+  row->chars = realloc(row->chars, row->size + 2);
+
+  // memmove > like memcpy, but good for if source and dest overlap
+  memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+
+  row->size++;
+  row->chars[at] = c;
+  editorUpdateRow(row);
+}
+
+/*** Editor operations ***/
+
+// insert acharacter at position of pointer
+void editorInsertChar(int c) {
+
+  if (E.cy == E.numrows) {
+    // Make a new row at the end if cursor position is max row
+    editorAppendRow("", 0);
+  }
+  
+  editorRowInsertChar(&E.row[E.cy], E.cx, c);
+  E.cx++;
+
+}
 
 /*** file i/o ***/
 
@@ -751,6 +783,10 @@ void editorProcessKeypress() {
     case ARROW_DOWN:
     case ARROW_UP:
       editorMoveCursor(c);
+      break;
+
+    default:
+      editorInsertChar(c);
       break;
   }
 }
