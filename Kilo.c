@@ -28,6 +28,7 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 
 enum editorKey {
+  BACKSPACE = 127,
   // giving thee arrow keys a representation that doesn't clash with char type 
   ARROW_LEFT = 1000,
   ARROW_RIGHT,
@@ -401,6 +402,33 @@ void editorInsertChar(int c) {
 
 /*** file i/o ***/
 
+
+/**
+ * Convert arrow structs into a single string 
+ * that can be written to file
+*/
+char *editorRowsToString(int *buflen) {
+  int totlen = 0;
+  int j;
+  for (j = 0; j < E.numrows; j++) {
+    totlen += E.row[j].size + 1;
+  }
+  *buflen = totlen;
+
+  char *buf = malloc(totlen);
+  char *p = buf;
+
+
+  for (j = 0; j < E.numrows; j++) {
+    memccpy(p, E.row[j].chars, E.row[j].size);
+    p += E.row[j].size;
+    *p = '\n';
+    p++;
+  }
+
+  return buf;
+}
+
 void editorOpen(char *filename) {
   free(E.filename);
   E.filename = strdup(filename); // strdup comes from string.h
@@ -735,6 +763,11 @@ void editorProcessKeypress() {
   int c = editorReadKey();
 
   switch(c) {
+
+    case '\r': // enter key
+      /* todo */
+      break;
+
     case CTRL_KEY('q'):
       write(STDOUT_FILENO, "\x1b[2J", 4);
       write(STDOUT_FILENO, "\x1b[H", 3);
@@ -752,6 +785,12 @@ void editorProcessKeypress() {
         E.cx = E.row[E.cy].size;
       }
       
+      break;
+
+    case BACKSPACE:
+    case CTRL_KEY('h'):
+    case DEL_KEY:
+      /* todo */
       break;
 
     // Move cursor to top or bottom of page
@@ -783,6 +822,10 @@ void editorProcessKeypress() {
     case ARROW_DOWN:
     case ARROW_UP:
       editorMoveCursor(c);
+      break;
+
+    case CTRL_KEY('l'):
+    case '\x1b':
       break;
 
     default:
