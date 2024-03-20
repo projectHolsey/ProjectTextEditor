@@ -317,6 +317,23 @@ int editorRowCxToRx(erow *row, int cx) {
   return rx;
 }
 
+int editorRowRxtoCx(erow *row, int rx) {
+  int cur_rx = 0;
+  int cx;
+  for (cx = 0; cx < row->size; cx++) {
+    if (row->chars[cx] == '\t') {
+      // Skipping over the \t char
+      cur_rx += (KILO_TAB_STOP - 1) - (cur_rx % KILO_TAB_STOP);
+    }
+    cur_rx++;
+
+    if (cur_rx > rx) {
+      return cx;
+    }
+  }
+  return cx;
+}
+
 void editorUpdateRow(erow *row) {
   int tabs = 0;
   int j;
@@ -622,6 +639,34 @@ void editorSave() {
 
 }
 
+/*** FIND ***/
+void editorFind() {
+  // get the string to search for
+  char *query = editorPrompt("Search: %s (ESC to cancel)");
+  if (query == NULL) {
+    return;
+  }
+
+  int i;
+  
+  // loop through all rows in file, if row contain str it's a match
+  for (i = 0; i < E.numrows; i++) {
+    erow *row = &E.row[i]; 
+    // compare strings
+    char *match = strstr(row->render, query);
+    if (match) {
+      E.cy = i;
+      E.cx = editorRowRxtoCx(row, match - row->render);
+      E.rowoff = E.numrows; 
+      // set to bottom of file
+      // so the next screen refresh will make search str found
+      // be placed at the top of the screen
+      break;
+    }
+  }
+
+  free(query);
+}
 
 /*** append buffer ***/
 // Instead of doing x small writes, we are making buffer to do 1 big write
@@ -1015,7 +1060,11 @@ void editorProcessKeypress() {
       if (E.cy < E.numrows) {
         E.cx = E.row[E.cy].size;
       }
-      
+      break;
+
+    case CTRL_KEY('f'):
+      // implementing find function
+      editorFind();
       break;
 
     case BACKSPACE:
