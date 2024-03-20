@@ -7,6 +7,7 @@
 
 #include <ctype.h> // Control characters
 #include <stdio.h> // standard IO module for printf
+#include <fcntl.h>  
 #include <errno.h> 
 #include <stdarg.h>
 #include <string.h>
@@ -23,6 +24,7 @@
 // const string to show version of the program
 #define KILO_VERSION "0.0.1"
 #define KILO_TAB_STOP 8
+#define KILO_QUIT_TIMES 2
 
 // defining a constant / function
 #define CTRL_KEY(k) ((k) & 0x1f)
@@ -63,6 +65,7 @@ struct editorConfig {
   int screencols;
   int numrows;
   erow *row; // storing multiple lines
+  int dirty;
   char *filename; // adding filename for status bar
   char statusmsg[80]; // creating status message line under status bar
   time_t statusmsg_time;  // current time of the status msg
@@ -72,6 +75,8 @@ struct editorConfig {
 
 struct editorConfig E;
 
+/*** PROTOTYPES ***/
+void editorSetStatusMessage(const char *fmt, ...);
 
 /*** terminal ***/
 void die(const char *s) {
@@ -365,6 +370,7 @@ void editorAppendRow(char *s, size_t len){
   editorUpdateRow(&E.row[at]); // pass reference to current row
 
   E.numrows++;
+  E.dirty++; // trying to gather how much file was changes
 }
 
 /**
@@ -383,6 +389,7 @@ void editorRowInsertChar(erow *row, int at, int c) {
   row->size++;
   row->chars[at] = c;
   editorUpdateRow(row);
+  E.dirty++; // attempting to get a sense of how many changes made to file
 }
 
 /*** Editor operations ***/
@@ -410,19 +417,21 @@ void editorInsertChar(int c) {
 char *editorRowsToString(int *buflen) {
   int totlen = 0;
   int j;
+  // add up lengths of each row
   for (j = 0; j < E.numrows; j++) {
-    totlen += E.row[j].size + 1;
+    totlen += E.row[j].size + 1; //+1 for bewline char
   }
+  
   *buflen = totlen;
 
   char *buf = malloc(totlen);
   char *p = buf;
 
-
+  // cpy each row into buffer
   for (j = 0; j < E.numrows; j++) {
-    memccpy(p, E.row[j].chars, E.row[j].size);
+    memcpy(p, E.row[j].chars, E.row[j].size);
     p += E.row[j].size;
-    *p = '\n';
+    *p = '\n'; // append new line to end of row
     p++;
   }
 
@@ -454,6 +463,45 @@ void editorOpen(char *filename) {
   }
   free(line);
   fclose(fp);
+  E.dirty = 0; // resetting on new load
+}
+
+
+void editorSave() {
+  /**
+   * In the future,you can change this to write to a temp file, 
+   * then check for errors when you change tmp file to actual name provided
+  */
+
+  // if new file
+  if (E.filename == NULL) {
+    return;
+  }
+
+  int len;
+  char *buf = editorRowsToString(&len); // get the char buffer
+
+  // open (or create if it doesn't exist) for reading
+  int fd = open(E.filename, O_RDWR | O_CREAT, 0644); // 0644 is the permissions
+  
+  // error checking
+  if (fd != -1) {
+    if(ftruncate(fd, len) != -1) {// sets file size to specific length
+      // write string to path E.filename
+      if(write(fd, buf, len)) {
+        close(fd);
+        free(buf);
+        E.dirty = 0; // resetting on save
+        editorSetStatusMessage("%d bytes written to disk", len);
+        return;   
+      }
+    }
+    close(fd);
+  }
+
+  free(buf);
+  editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+
 }
 
 
@@ -583,14 +631,15 @@ void editorDrawRows(struct abuf *ab) {
   }
 }
 
-void editorDrawStatusBar(struct abuf *ab) {
+void %d bytes written to diskeditorDrawStatusBar(struct abuf *ab) {
   // explaining m commands - https://vt100.net/docs/vt100-ug/chapter3.html#SGR
   abAppend(ab, "\x1b[7m", 4); // escape sequence - switches to inverted colours
   char status[80], rstatus[80];
   
   // getting length of row to write
   // Copying filename / [no name] to buffer
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.numrows);
+  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s", 
+    E.filename ? E.filename : "[No Name]", E.numrows, E.dirty ? "(modified)" : "");
   
   // Render line also includes the current line number at right edge of screen
   int rlen = snprintf(rstatus, sizeof(rstatus),  "%d/%d", E.cy + 1, E.numrows);
@@ -760,6 +809,8 @@ void editorMoveCursor(int key) {
 
 // wait for keypress, handles it later
 void editorProcessKeypress() {
+  static int quit_times = KILO_QUIT_TIMES;
+
   int c = editorReadKey();
 
   switch(c) {
@@ -769,9 +820,20 @@ void editorProcessKeypress() {
       break;
 
     case CTRL_KEY('q'):
+      // quit program
+      if (E.dirty && quit_times > 0) {
+        editorSetStatusMessage("Warning, changes will be lost!");
+        quit_times--;
+        return;
+      }
       write(STDOUT_FILENO, "\x1b[2J", 4);
       write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
+      break;
+
+    case CTRL_KEY('s'):
+      // save the buffer to file
+      editorSave();
       break;
 
     // making home key jump to beigging of line
@@ -832,11 +894,13 @@ void editorProcessKeypress() {
       editorInsertChar(c);
       break;
   }
+
+  quit_times = KILO_QUIT_TIMES;
 }
 
 
 /*** init ***/
-void initEditor() {
+void %d bytes written to diskinitEditor() {
   E.cy = 0;
   E.cx = 0;
   E.rx = 0;
@@ -844,6 +908,9 @@ void initEditor() {
   E.coloff = 0;
   E.numrows = 0; // will only display a single line of text
   E.row = NULL;
+
+  E.dirty = 0; // checking if we're new file or not
+
   E.filename = NULL; // initalised to NULL - will stay if there's no file read in
 
   E.statusmsg[0] = '\0';
@@ -872,7 +939,7 @@ int main(int argc, char *argv[]) {
     editorOpen(argv[1]);
   }
   
-  editorSetStatusMessage("HELP: Ctrl-Q = quit");
+  editorSetStatusMessage("HELP: CTRL-s = save | Ctrl-Q = quit");
 
   while (1) {
     editorRefreshScreen();

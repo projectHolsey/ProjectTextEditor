@@ -1,0 +1,6 @@
+c is make to be compiled in a single pass
+- meaning it should be possible to compile each part of 
+    the program without knowing what comes later in the program
+- prototypes the compiler the necessary information about
+    the function(s) 
+    ( arguments & return type)
