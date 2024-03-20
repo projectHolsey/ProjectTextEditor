@@ -373,6 +373,26 @@ void editorAppendRow(char *s, size_t len){
   E.dirty++; // trying to gather how much file was changes
 }
 
+// Free memory 
+void editorFreeRow(erow *row) {
+  free(row->render);
+  free(row->chars);
+}
+
+void editorDelRow(int at) {
+  // Sanity checking
+  if (at < 0 || at >= E.numrows) {
+    return;
+  }
+
+  // Remove memory of current row
+  editorFreeRow(&E.row[at]);
+
+  // Moving the next row to the current row being deleted's position
+  memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+}
+
+
 /**
  * Function inserts a single char into an erow
 */
@@ -392,6 +412,41 @@ void editorRowInsertChar(erow *row, int at, int c) {
   E.dirty++; // attempting to get a sense of how many changes made to file
 }
 
+void editorRowAppendString(erow *row, char *s, size_t len) {
+  
+  // Adding the addition memory to end of row
+  row->chars = realloc(row->chars, row->size + len + 1);
+
+  // Copying the characters to the free memory at end of row
+  memcpy(&row->chars[row->size], s, len);
+
+  row->size += len; // updating row's size
+
+  row->chars[row->size] = '\0'; // added EoL char
+
+  editorUpdateRow(row);
+  E.dirty++;
+}
+
+void editorRowDelChar(erow *row, int at) {
+  // sanity check char to delete is in row length bounds
+  if (at < 0 || at >= row->size) {
+    return;
+  }
+
+  // Moving all chars 1 to left, and reducing size of row by 1
+  memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+
+  row->size--;
+
+  // update the row to remove the deleted char
+  editorUpdateRow(row);
+
+  // show the fiel is 'dirtier'
+  E.dirty++;
+}
+
+
 /*** Editor operations ***/
 
 // insert acharacter at position of pointer
@@ -405,6 +460,35 @@ void editorInsertChar(int c) {
   editorRowInsertChar(&E.row[E.cy], E.cx, c);
   E.cx++;
 
+}
+
+void editorDelChar() {
+  // Sanity checking we're not deleting last row
+  if (E.cy == E.numrows) {
+    return;
+  }
+
+  if (E.cx == 0 && E.cy == 0) {
+    return;
+  }
+
+  // get reference to row to be deleted;
+  erow *row = &E.row[E.cy];
+
+  // Checking cursor position on row is valid
+  if (E.cx > 0) {
+    // Delete char at cursor
+    editorRowDelChar(row, E.cx - 1);
+    // decrement cursor position
+    E.cx--;
+  } else {
+    // handling case where cursor is at the begginning of a line and we need to 
+    // move all the current row onto the end of the row before it
+    E.cx = E.row[E.cy - 1].size;
+    editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
+    editorDelRow(E.cy);
+    E.cy--;
+  }
 }
 
 /*** file i/o ***/
@@ -852,7 +936,11 @@ void editorProcessKeypress() {
     case BACKSPACE:
     case CTRL_KEY('h'):
     case DEL_KEY:
-      /* todo */
+      // move cursor and delete character
+      if (c == DEL_KEY) {
+        editorMoveCursor(ARROW_RIGHT);
+      }
+      editorDelChar();
       break;
 
     // Move cursor to top or bottom of page
@@ -899,8 +987,10 @@ void editorProcessKeypress() {
 }
 
 
+
+
 /*** init ***/
-void %d bytes written to diskinitEditor() {
+void diskinitEditor() {
   E.cy = 0;
   E.cx = 0;
   E.rx = 0;
