@@ -351,13 +351,21 @@ void editorUpdateRow(erow *row) {
 }
 
 
-void editorAppendRow(char *s, size_t len){
+void editorInsertRow(int at, char *s, size_t len){
+  if (at < 0 || at > E.numrows) {
+    return;
+  }
+
+  // Adding new memory to end of row
+  E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+
+  // moving chars to end of row
+  memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * E.numrows - at);
 
   // allocating space for new erow
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
   // copy given string to end of eRow
-  int at = E.numrows;
   E.row[at].size = len;
   E.row[at].chars = malloc(len + 1);
   // Copy the line to chars in row
@@ -454,12 +462,32 @@ void editorInsertChar(int c) {
 
   if (E.cy == E.numrows) {
     // Make a new row at the end if cursor position is max row
-    editorAppendRow("", 0);
+    editorInsertRow(E.numrows,"", 0);
   }
   
   editorRowInsertChar(&E.row[E.cy], E.cx, c);
   E.cx++;
 
+}
+
+void editorInsertNewLine() {
+  // handling the 'enter' keypress
+  if (E.cx == 0) {
+    // If we're at beginning of file / line, just add new row
+    editorInsertRow(E.cy, "", 0);
+  } else {
+    // Create reference to current row
+    erow *row = &E.row[E.cy];
+    // Insert the new line mid row
+    editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+    // change current row to row at cursor y pos
+    row = &E.row[E.cy];
+    row->size = E.cx; // Current row size is position of cursor x position
+    row->chars[row->size] = '\0'; // append end of line char
+    editorUpdateRow(row); // update the current row
+  }
+  E.cy++; // make cursor change to next line
+  E.cx = 0; // set cursor to beginnig of the row
 }
 
 void editorDelChar() {
@@ -543,7 +571,7 @@ void editorOpen(char *filename) {
       linelen--;
    
     }
-    editorAppendRow(line, linelen);
+    editorInsertRow(E.numrows,line, linelen);
   }
   free(line);
   fclose(fp);
@@ -900,7 +928,7 @@ void editorProcessKeypress() {
   switch(c) {
 
     case '\r': // enter key
-      /* todo */
+      editorInsertNewLine();
       break;
 
     case CTRL_KEY('q'):

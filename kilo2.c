@@ -165,7 +165,7 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
-void editorAppendRow(char *s, size_t len) {
+void editorInsertRow(char *s, size_t len) {
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
   int at = E.numrows;
@@ -189,7 +189,7 @@ void editorOpen(char *filename) {
     while (linelen > 0 && (line[linelen - 1] == '\n' ||
                            line[linelen - 1] == '\r'))
       linelen--;
-    editorAppendRow(line, linelen);
+    editorInsertRow(line, linelen);
   }
   free(line);
   fclose(fp);
