@@ -77,6 +77,8 @@ struct editorConfig E;
 
 /*** PROTOTYPES ***/
 void editorSetStatusMessage(const char *fmt, ...);
+void editorRefreshScreen();
+char *editorPrompt(char *prompt);
 
 /*** terminal ***/
 void die(const char *s) {
@@ -587,7 +589,11 @@ void editorSave() {
 
   // if new file
   if (E.filename == NULL) {
-    return;
+    E.filename = editorPrompt("Save as: %s (ESC to cancel)");
+    if (E.filename == NULL) {
+      editorSetStatusMessage("");
+      return;
+    }
   }
 
   int len;
@@ -870,6 +876,57 @@ void editorSetStatusMessage(const char *fmt, ...) {
 }
 
 /*** input ***/
+
+char *editorPrompt(char *prompt) {
+  // creating a 128 byte buffer
+  size_t bufsize = 128;
+  char *buf = malloc(bufsize);
+
+  // end of line char
+  size_t buflen = 0;
+  buf[0] = '\0';
+
+  // while true
+  while(1) {
+    // Add a new status message for user
+    editorSetStatusMessage(prompt, buf);
+    // refresh screen to show message
+    editorRefreshScreen();
+
+    // read a key from the user
+    int c = editorReadKey();
+    
+    if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
+      if (buflen != 0) {
+        // if we're not currently at beginning of line
+        // replace the last char with an end of line character
+        buf[--buflen] = '\0';
+      }
+    } else if (c == '\x1b') { // if user hit excape, return nothing
+      editorSetStatusMessage("");
+      free(buf);
+      return NULL;
+    
+    } else if (c == '\r') {
+      // if the key is enter, and current buffer is empty, then return nothign
+      if (buflen != 0) {
+        editorSetStatusMessage("");
+        return buf;
+      }
+    } else if (!iscntrl(c) && c < 128) { // if it's not a ctrl char and c is a valid character
+      // if we've reached the max buffer size, double it
+      if (buflen == bufsize - 1) {
+        bufsize *= 2;
+        buf = realloc(buf, bufsize);
+      }
+      // add c to the buffer
+      buf[buflen++] = c;
+      // add the end of line char to end of buffer
+      buf[buflen] = '\0';
+
+    }
+  }
+}
 
 void editorMoveCursor(int key) {
 
