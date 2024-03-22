@@ -31,7 +31,7 @@
 
 enum editorKey {
   BACKSPACE = 127,
-  // giving thee arrow keys a representation that doesn't clash with char type 
+  // giving thee arrow keeditorIys a representation that doesn't clash with char type 
   ARROW_LEFT = 1000,
   ARROW_RIGHT,
   ARROW_UP,
@@ -43,6 +43,12 @@ enum editorKey {
   PAGE_DOWN
 };
 
+enum editorHighlight {
+  HL_NORMAL = 0,
+  HL_NUMBER,
+  HL_MATCH // for highlighting search results
+};
+
 /*** data ***/
 
 // data type for storing row in text editor
@@ -51,6 +57,7 @@ typedef struct erow {
   int rsize;
   char *chars;
   char *render; // rendering tabs and other special chars
+  unsigned char *hl; // highlight (unsigned char meaning ints 0-255)
 } erow;
 
 
@@ -301,6 +308,38 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+/*** Syntax highlighting ***/
+
+void editorUpdateSyntax(erow *row) {
+  // Create a new array of memory for the highlighting, same size of row
+  row->hl = realloc(row->hl, row->rsize);
+  // Set all the items in hl array to 'HL_NORMAL'
+  memset(row->hl, HL_NORMAL, row->rsize);
+
+  int i;
+  // Go through all itmes in row
+  for (i = 0; i < row->rsize; i++) {
+    // If the item is a digit
+    if (isdigit(row->render[i])) {
+      // set the highlight array in same position to number highlight
+      row->hl[i] = HL_NUMBER;
+    }
+  }
+}
+
+int editorSyntaxToColor(int hl) {
+  // Case statement to return proper colour used in esc char sequence
+  switch (hl) {
+    case HL_NUMBER:
+      return 31;
+    case HL_MATCH:
+      return 34;
+    default:
+      return 37;
+  }
+}
+
+
 /** file I/O ***/
 
 int editorRowCxToRx(erow *row, int cx) {
@@ -317,7 +356,7 @@ int editorRowCxToRx(erow *row, int cx) {
   return rx;
 }
 
-int editorRowRxtoCx(erow *row, int rx) {
+int editorRowRxToCx(erow *row, int rx) {
   int cur_rx = 0;
   int cx;
   for (cx = 0; cx < row->size; cx++) {
@@ -367,6 +406,9 @@ void editorUpdateRow(erow *row) {
   row->render[idx] = '\0'; // append end of line char
   row->rsize = idx; // size of row
 
+  // checking for highlighting
+  editorUpdateSyntax(row);
+
 }
 
 
@@ -381,9 +423,6 @@ void editorInsertRow(int at, char *s, size_t len){
   // moving chars to end of row
   memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * E.numrows - at);
 
-  // allocating space for new erow
-  E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
-
   // copy given string to end of eRow
   E.row[at].size = len;
   E.row[at].chars = malloc(len + 1);
@@ -394,6 +433,8 @@ void editorInsertRow(int at, char *s, size_t len){
 
   E.row[at].rsize = 0;
   E.row[at].render = NULL;
+  E.row[at].hl = NULL;
+  
   editorUpdateRow(&E.row[at]); // pass reference to current row
 
   E.numrows++;
@@ -404,6 +445,7 @@ void editorInsertRow(int at, char *s, size_t len){
 void editorFreeRow(erow *row) {
   free(row->render);
   free(row->chars);
+  free(row->hl);
 }
 
 void editorDelRow(int at) {
@@ -417,6 +459,8 @@ void editorDelRow(int at) {
 
   // Moving the next row to the current row being deleted's position
   memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+  E.numrows--;
+  E.dirty++;
 }
 
 
@@ -489,7 +533,7 @@ void editorInsertChar(int c) {
 
 }
 
-void editorInsertNewLine() {
+void editorInsertNewline() {
   // handling the 'enter' keypress
   if (E.cx == 0) {
     // If we're at beginning of file / line, just add new row
@@ -608,7 +652,7 @@ void editorSave() {
   if (E.filename == NULL) {
     E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
     if (E.filename == NULL) {
-      editorSetStatusMessage("");
+      editorSetStatusMessage("Save aborted");
       return;
     }
   }
@@ -623,7 +667,7 @@ void editorSave() {
   if (fd != -1) {
     if(ftruncate(fd, len) != -1) {// sets file size to specific length
       // write string to path E.filename
-      if(write(fd, buf, len)) {
+      if(write(fd, buf, len) == len) {
         close(fd);
         free(buf);
         E.dirty = 0; // resetting on save
@@ -686,11 +730,14 @@ void editorFindCallback(char *query, int key) {
     if (match) {
       last_match = current; 
       E.cy = current;
-      E.cx = editorRowRxtoCx(row, match - row->render);
+      E.cx = editorRowRxToCx(row, match - row->render);
       E.rowoff = E.numrows; 
       // set to bottom of file
       // so the next screen refresh will make search str found
       // be placed at the top of the screen
+
+      // setting the highlighted region for the found strings in search code
+      memset(&row->hl[match-row->render], HL_MATCH, strlen(query));
       break;
     }
   }
@@ -833,18 +880,32 @@ void editorDrawRows(struct abuf *ab) {
       }
 
       char *c = &E.row[filerow].render[E.coloff];
+      // getting current char in highlighting array
+      unsigned char *hl = &E.row[filerow].hl[E.coloff];
+      int current_color = -1;
       int j;
       for (j = 0; j < len; j++) {
-        if (isdigit(c[j])) {
-          // Making digits change colour to red
-          abAppend(ab, "\x1b[31m", 5);
-          abAppend(ab, &c[j], 1);
-          // changing the  colour back to white
-          abAppend(ab, "\x1b[39m", 5);
+        if (hl[j] == HL_NORMAL) {
+          // Making it a little more efficient
+          if (current_color != -1) {
+            // default colour on normal highlighting
+            abAppend(ab, "\x1b[39m", 5);
+            abAppend(ab, &c[j], 1);
+          }
         } else {
+          // red colour for digits
+          int color = editorSyntaxToColor(hl[j]);
+          if (color != current_color) {
+            current_color = color;
+            char buf[16];
+            int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+            abAppend(ab, buf, clen);
+          }
           abAppend(ab, &c[j], 1);
         }
       }
+      // ensuring we reset to default after row is checked
+      abAppend(ab, "\x1b[39m", 5);
     }
 
 
@@ -855,7 +916,7 @@ void editorDrawRows(struct abuf *ab) {
   }
 }
 
-void %d bytes written to diskeditorDrawStatusBar(struct abuf *ab) {
+void editorDrawStatusBar(struct abuf *ab) {
   // explaining m commands - https://vt100.net/docs/vt100-ug/chapter3.html#SGR
   abAppend(ab, "\x1b[7m", 4); // escape sequence - switches to inverted colours
   char status[80], rstatus[80];
@@ -1102,7 +1163,7 @@ void editorProcessKeypress() {
   switch(c) {
 
     case '\r': // enter key
-      editorInsertNewLine();
+      editorInsertNewline();
       break;
 
     case CTRL_KEY('q'):
@@ -1136,7 +1197,7 @@ void editorProcessKeypress() {
 
     case CTRL_KEY('f'):
       // implementing find function
-      editorFindCallback();
+      editorFind();
       break;
 
     case BACKSPACE:
@@ -1196,7 +1257,7 @@ void editorProcessKeypress() {
 
 
 /*** init ***/
-void diskinitEditor() {
+void initEditor() {
   E.cy = 0;
   E.cx = 0;
   E.rx = 0;
