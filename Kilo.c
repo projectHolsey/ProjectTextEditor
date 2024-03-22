@@ -690,6 +690,18 @@ void editorFindCallback(char *query, int key) {
   static int last_match = -1;
   static int direction = 1; // forward/back search
 
+  // static variables to keep state
+  static int saved_hl_line;     // reference to line changed
+  static char *saved_hl = NULL; // memory of line changed, NULL when nothing to restore
+  
+  if (saved_hl) {
+    // Restoring the line that was changed
+    memccpy(E.row[saved_hl_line].hl, saved_hl, E.row[saved_hl_line].rsize);
+    free(saved_hl);
+    saved_hl = NULL;
+  }
+
+
   // return if the key pressed was ESC or RET
   if (key == '\r' || key == '\x1b') {
     last_match = -1;
@@ -736,6 +748,11 @@ void editorFindCallback(char *query, int key) {
       // so the next screen refresh will make search str found
       // be placed at the top of the screen
 
+      saved_hl_line = current;      // Line that was changed
+      saved_hl = malloc(row->size); // Allocating memory for change
+      // copying line to allocated memory before highlighting was applied
+      // so we can restore it to default next time we enter this funtion
+      memcpy(saved_hl, row->hl, row->rsize);  
       // setting the highlighted region for the found strings in search code
       memset(&row->hl[match-row->render], HL_MATCH, strlen(query));
       break;
