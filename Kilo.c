@@ -321,19 +321,27 @@ void editorUpdateSyntax(erow *row) {
   // Set all the items in hl array to 'HL_NORMAL'
   memset(row->hl, HL_NORMAL, row->rsize);
 
+  // making sure the ints in the middle of a word are not hihglighted.
+  int prev_sep = 1;
+
   int i = 0;
   // Go through all itmes in row
   
   // whikle loop allows for multiple characters each function call
   while (i < row->rsize) {
-
     char c = row->render[i];
+    unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
 
-    // If the item is a digit
-    if (isdigit(c)) {
+    // If the item is a digit & allowing for decimal points
+    if ((isdigit(c) && (prev_sep || prev_hl == HL_NUMBER)) || (c == '.' && prev_hl == HL_NUMBER){
       // set the highlight array in same position to number highlight
       row->hl[i] = HL_NUMBER;
+      i++;
+      prev_sep = 0;
+      continue;
     }
+    // checking if previous step was separator so we don't highlight mid word for ints
+    prev_sep = is_separator(c);
     i++;
   }
 }
