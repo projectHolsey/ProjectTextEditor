@@ -310,20 +310,31 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** Syntax highlighting ***/
 
+int is_separator(int c) {
+  // Checking if the current character is a separator character
+  return isspace(c) || c == '\0' || strchr(",.()+-/*=~%<>[];", c) != NULL;
+}
+
 void editorUpdateSyntax(erow *row) {
   // Create a new array of memory for the highlighting, same size of row
   row->hl = realloc(row->hl, row->rsize);
   // Set all the items in hl array to 'HL_NORMAL'
   memset(row->hl, HL_NORMAL, row->rsize);
 
-  int i;
+  int i = 0;
   // Go through all itmes in row
-  for (i = 0; i < row->rsize; i++) {
+  
+  // whikle loop allows for multiple characters each function call
+  while (i < row->rsize) {
+
+    char c = row->render[i];
+
     // If the item is a digit
-    if (isdigit(row->render[i])) {
+    if (isdigit(c)) {
       // set the highlight array in same position to number highlight
       row->hl[i] = HL_NUMBER;
     }
+    i++;
   }
 }
 
