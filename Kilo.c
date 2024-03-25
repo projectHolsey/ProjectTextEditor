@@ -45,11 +45,13 @@ enum editorKey {
 
 enum editorHighlight {
   HL_NORMAL = 0,
+  HL_STRING,
   HL_NUMBER,
   HL_MATCH // for highlighting search results
 };
 
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
+#define HL_HIGHLIGHT_STRINGS (1<<1)
 
 /*** data ***/
 
@@ -101,7 +103,7 @@ struct editorSyntax HLDB[] = {
   {
     "c",
     C_HL_extensions,
-    HL_HIGHLIGHT_NUMBERS
+    HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
   },
 };
 
@@ -354,6 +356,7 @@ void editorUpdateSyntax(erow *row) {
 
   // making sure the ints in the middle of a word are not hihglighted.
   int prev_sep = 1;
+  int in_string = 0;
 
   int i = 0;
   // Go through all itmes in row
@@ -362,6 +365,33 @@ void editorUpdateSyntax(erow *row) {
   while (i < row->rsize) {
     char c = row->render[i];
     unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
+
+    if (E.syntax->flags & HL_HIGHLIGHT_STRINGS) {
+      if (in_string) {
+        row->hl[i] = HL_STRING;
+        // If we're in a string, and there's a \, we know there's another few characters on next row that nned highlight
+        if (c == '\\' && i + 1 < row->rsize) {
+          row->hl[i + 1] = HL_STRING;
+          i += 2;
+          continue;
+        }
+        if (c == in_string) {
+          in_string = 0;
+        }
+        i++;
+        prev_sep = 1;
+        continue;
+      } else {
+        // highlighting double and single quote string
+        if (c == '"' || c == '\'') {
+          in_string = c;
+          row->hl[i] = HL_STRING;
+          i++;
+          continue;
+        }
+      }
+    }
+
 
     if (E.syntax->flags & HL_HIGHLIGHT_NUMBERS){
       // If the item is a digit & allowing for decimal points
@@ -382,6 +412,8 @@ void editorUpdateSyntax(erow *row) {
 int editorSyntaxToColor(int hl) {
   // Case statement to return proper colour used in esc char sequence
   switch (hl) {
+    case HL_STRING:
+      return 35;
     case HL_NUMBER:
       return 31;
     case HL_MATCH:
