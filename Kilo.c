@@ -56,7 +56,7 @@ enum editorHighlight {
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
 #define HL_HIGHLIGHT_STRINGS (1<<1)
 
-/*** data ***/
+/*** -data- ***/
 
 struct editorSyntax {
   char *filetype;
@@ -422,7 +422,8 @@ void editorUpdateSyntax(erow *row) {
 
     if (E.syntax->flags & HL_HIGHLIGHT_NUMBERS){
       // If the item is a digit & allowing for decimal points
-      if ((isdigit(c) && (prev_sep || prev_hl == HL_NUMBER)) || (c == '.' && prev_hl == HL_NUMBER)) {
+      if ((isdigit(c) && (prev_sep || prev_hl == HL_NUMBER)) || 
+	  	(c == '.' && prev_hl == HL_NUMBER)) {
         // set the highlight array in same position to number highlight
         row->hl[i] = HL_NUMBER;
         i++;
@@ -439,7 +440,7 @@ void editorUpdateSyntax(erow *row) {
         if (kw2) {
           klen--;
         }
-        if (strncmp(&row->render[i], keywords[j], klen) && 
+        if (!strncmp(&row->render[i], keywords[j], klen) && 
           is_separator(row->render[i + klen])) {
             memset(&row->hl[i], kw2 ? HL_KEYWORD2 : HL_KEYWORD1, klen);
             i += klen;
@@ -448,7 +449,7 @@ void editorUpdateSyntax(erow *row) {
       }
       if (keywords[j] != NULL) {
         prev_sep = 0;
-        break;
+        continue;
       }
     }
 
@@ -484,18 +485,14 @@ void editorSelectSyntaxHighlight() {
     return;
   }
 
-  // finding extension
-  // strrchr -> returns pointer to last occurence of char in str
-  char *ext = strrchr(E.filename, '.');
-
   for (unsigned int j = 0; j < HLDB_ENTRIES; j++) {
     struct editorSyntax *s = &HLDB[j];
     unsigned int i = 0;
     while (s->filematch[i]) {
-      int is_ext = (s->filematch[i][0] == '.');
-      // strcmp -> returns 0 if 2 given strings are equal
-      if ((is_ext && ext && !strcmp(ext, s->filematch[i])) || 
-        (!is_ext && strstr(E.filename, s->filematch[i]))) {
+      char *p = strstr(E.filename, s->filematch[i]);
+      if (p != NULL) {
+        int patlen = strlen(s->filematch[i]);
+        if (s->filematch[i][0] != '.' || p[patlen] == '\0') {
           E.syntax = s;
           
           int filerow;
@@ -505,6 +502,7 @@ void editorSelectSyntaxHighlight() {
 
           return;
         }
+      }
       i++;
     }
 
@@ -594,7 +592,7 @@ void editorInsertRow(int at, char *s, size_t len){
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
   // moving chars to end of row
-  memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * E.numrows - at);
+  memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
 
   // copy given string to end of eRow
   E.row[at].size = len;
@@ -926,7 +924,7 @@ void editorFindCallback(char *query, int key) {
       // be placed at the top of the screen
 
       saved_hl_line = current;      // Line that was changed
-      saved_hl = malloc(row->size); // Allocating memory for change
+      saved_hl = malloc(row->rsize);
       // copying line to allocated memory before highlighting was applied
       // so we can restore it to default next time we enter this funtion
       memcpy(saved_hl, row->hl, row->rsize);  
@@ -1084,8 +1082,9 @@ void editorDrawRows(struct abuf *ab) {
           if (current_color != -1) {
             // default colour on normal highlighting
             abAppend(ab, "\x1b[39m", 5);
-            abAppend(ab, &c[j], 1);
+            current_color = -1;
           }
+          abAppend(ab, &c[j], 1);
         } else {
           // red colour for digits
           int color = editorSyntaxToColor(hl[j]);
